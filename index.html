@@ -70,6 +70,26 @@
       background: #555;
     }
 
+    button:disabled {
+      background: #aaa;
+      cursor: not-allowed;
+    }
+
+    #status {
+      text-align: center;
+      color: #666;
+      padding: 20px 0;
+    }
+
+    #error {
+      display: none;
+      padding: 12px;
+      margin-top: 15px;
+      background: #f8dddd;
+      border-radius: 6px;
+      color: #8a1f1f;
+    }
+
     #result {
       margin-top: 25px;
       padding-top: 20px;
@@ -96,55 +116,15 @@
   <div class="container">
     <h1>Café Bill Calculator</h1>
 
-    <div class="item">
-      <div class="item-info">
-        <strong>Chicken Rice</strong>
-        <div class="price">$4.50</div>
-      </div>
-      <input type="number" id="chickenRice" min="0" value="0">
-    </div>
+    <div id="status">Loading menu...</div>
 
-    <div class="item">
-      <div class="item-info">
-        <strong>Nasi Lemak</strong>
-        <div class="price">$4.00</div>
-      </div>
-      <input type="number" id="nasiLemak" min="0" value="0">
-    </div>
+    <div id="menu"></div>
 
-    <div class="item">
-      <div class="item-info">
-        <strong>Laksa</strong>
-        <div class="price">$5.00</div>
-      </div>
-      <input type="number" id="laksa" min="0" value="0">
-    </div>
+    <div id="error"></div>
 
-    <div class="item">
-      <div class="item-info">
-        <strong>Kopi</strong>
-        <div class="price">$1.50</div>
-      </div>
-      <input type="number" id="kopi" min="0" value="0">
-    </div>
-
-    <div class="item">
-      <div class="item-info">
-        <strong>Teh</strong>
-        <div class="price">$1.30</div>
-      </div>
-      <input type="number" id="teh" min="0" value="0">
-    </div>
-
-    <div class="item">
-      <div class="item-info">
-        <strong>Milo</strong>
-        <div class="price">$2.00</div>
-      </div>
-      <input type="number" id="milo" min="0" value="0">
-    </div>
-
-    <button onclick="calculateBill()">Calculate Bill</button>
+    <button id="calculateButton" onclick="calculateBill()" disabled>
+      Calculate Bill
+    </button>
 
     <div id="result">
       <div id="billDetails"></div>
@@ -157,14 +137,83 @@
   </div>
 
   <script>
-    const menu = [
-      { id: "chickenRice", name: "Chicken Rice", price: 4.50 },
-      { id: "nasiLemak", name: "Nasi Lemak", price: 4.00 },
-      { id: "laksa", name: "Laksa", price: 5.00 },
-      { id: "kopi", name: "Kopi", price: 1.50 },
-      { id: "teh", name: "Teh", price: 1.30 },
-      { id: "milo", name: "Milo", price: 2.00 }
-    ];
+    let menu = [];
+
+    async function loadMenu() {
+      try {
+        const response = await fetch("menu.csv");
+
+        if (!response.ok) {
+          throw new Error("Unable to load menu.csv");
+        }
+
+        const csvText = await response.text();
+        const lines = csvText.trim().split(/\r?\n/);
+
+        // Remove header row
+        lines.shift();
+
+        menu = lines
+          .filter(line => line.trim() !== "")
+          .map((line, index) => {
+            const [name, price] = line.split(",");
+
+            return {
+              id: "item-" + index,
+              name: name.trim(),
+              price: parseFloat(price.trim())
+            };
+          })
+          .filter(item =>
+            item.name &&
+            !isNaN(item.price)
+          );
+
+        if (menu.length === 0) {
+          throw new Error("No valid menu items found.");
+        }
+
+        displayMenu();
+
+        document.getElementById("status").style.display = "none";
+        document.getElementById("calculateButton").disabled = false;
+
+      } catch (error) {
+        document.getElementById("status").style.display = "none";
+
+        const errorBox = document.getElementById("error");
+        errorBox.textContent =
+          "Could not load the menu. Please make sure menu.csv is in the same folder as index.html.";
+        errorBox.style.display = "block";
+      }
+    }
+
+    function displayMenu() {
+      const menuContainer = document.getElementById("menu");
+      menuContainer.innerHTML = "";
+
+      menu.forEach(item => {
+        const itemElement = document.createElement("div");
+        itemElement.className = "item";
+
+        itemElement.innerHTML = `
+          <div class="item-info">
+            <strong>${escapeHtml(item.name)}</strong>
+            <div class="price">$${item.price.toFixed(2)}</div>
+          </div>
+
+          <input
+            type="number"
+            id="${item.id}"
+            min="0"
+            step="1"
+            value="0"
+          >
+        `;
+
+        menuContainer.appendChild(itemElement);
+      });
+    }
 
     function calculateBill() {
       let total = 0;
@@ -172,9 +221,13 @@
 
       menu.forEach(item => {
         const input = document.getElementById(item.id);
-        const quantity = Math.max(0, parseInt(input.value) || 0);
 
-        // Prevent negative quantities from affecting the bill
+        let quantity = parseInt(input.value);
+
+        if (isNaN(quantity) || quantity < 0) {
+          quantity = 0;
+        }
+
         input.value = quantity;
 
         if (quantity > 0) {
@@ -183,7 +236,7 @@
 
           billHTML += `
             <div class="bill-row">
-              <span>${item.name} × ${quantity}</span>
+              <span>${escapeHtml(item.name)} × ${quantity}</span>
               <span>$${subtotal.toFixed(2)}</span>
             </div>
           `;
@@ -205,6 +258,14 @@
 
       document.getElementById("result").style.display = "block";
     }
+
+    function escapeHtml(text) {
+      const div = document.createElement("div");
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    loadMenu();
   </script>
 
 </body>
